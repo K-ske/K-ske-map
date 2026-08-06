@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>神楽坂マップ</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2438;
+    --panel:#232C42;
+    --panel-2:#2C3552;
+    --amber:#E8A33D;
+    --ember:#D9643A;
+    --paper:#F3EEE4;
+    --muted:#A9AFC3;
+    --teal:#4F8F86;
+    --line: rgba(243,238,228,0.10);
+    --shadow: 0 8px 28px rgba(10,14,28,0.45);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;padding:0;}
+  body{
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    background:var(--ink);
+    color:var(--paper);
+    overflow:hidden;
+  }
+  #app{ position:relative; width:100%; height:100vh; min-height:520px; }
+  #map{ position:absolute; inset:0; background:var(--ink); }
+  .leaflet-tile{ filter: saturate(0.85) brightness(0.8) contrast(1.05); }
+  .leaflet-control-attribution{ font-size:9px; background:rgba(27,36,56,0.7) !important; color:var(--muted) !important; }
+  .leaflet-control-attribution a{ color:var(--muted) !important; }
+
+  /* Zoom control, restyled to match theme (kept visible for usability) */
+  .leaflet-control-zoom{ border:none !important; box-shadow:var(--shadow) !important; }
+  .leaflet-control-zoom a{
+    background:rgba(27,36,56,0.92) !important; color:var(--paper) !important;
+    border:1px solid var(--line) !important; width:32px !important; height:32px !important;
+    line-height:32px !important; font-size:16px !important;
+  }
+  .leaflet-control-zoom a:first-child{ border-radius:10px 10px 0 0 !important; }
+  .leaflet-control-zoom a:last-child{ border-radius:0 0 10px 10px !important; border-top:none !important; }
+  .leaflet-control-zoom a:hover{ background:var(--amber) !important; color:#231705 !important; }
+  .leaflet-bottom.leaflet-right .leaflet-control-zoom{ margin-right:14px; margin-bottom:74px; }
+
+  /* Header */
+  #header{
+    position:absolute; top:0; left:0; right:0; z-index:500;
+    display:flex; align-items:flex-start; justify-content:space-between; gap:8px;
+    padding:14px 14px 0 14px; pointer-events:none;
+  }
+  #brand{
+    display:flex; align-items:center; gap:8px;
+    background:rgba(27,36,56,0.88); backdrop-filter:blur(6px);
+    border:1px solid var(--line); border-radius:999px;
+    padding:9px 16px 9px 12px; box-shadow:var(--shadow); pointer-events:auto;
+  }
+  #brand .lantern{ font-size:16px; filter:drop-shadow(0 0 6px rgba(232,163,61,0.7)); }
+  #brand .title{ font-family:'Shippori Mincho', serif; font-weight:700; font-size:15px; letter-spacing:0.02em; }
+  #brand .sub{ font-size:10px; color:var(--muted); margin-top:-1px; }
+
+  #liveBtn{
+    pointer-events:auto;
+    display:flex; align-items:center; gap:6px;
+    background:rgba(27,36,56,0.88); backdrop-filter:blur(6px);
+    border:1px solid var(--line); border-radius:999px;
+    padding:9px 14px; font-size:12px; font-weight:500; color:var(--paper);
+    box-shadow:var(--shadow); cursor:pointer; transition:all .2s;
+  }
+  #liveBtn.on{ background:var(--teal); color:#0d1420; border-color:var(--teal); }
+  #liveBtn .dot{ width:7px; height:7px; border-radius:50%; background:var(--muted); }
+  #liveBtn.on .dot{ background:#0d1420; box-shadow:0 0 0 0 rgba(13,20,32,0.6); animation:pulseDot 1.6s infinite; }
+  @keyframes pulseDot{ 0%{box-shadow:0 0 0 0 rgba(13,20,32,0.5);} 70%{box-shadow:0 0 0 7px rgba(13,20,32,0);} 100%{box-shadow:0 0 0 0 rgba(13,20,32,0);} }
+
+  /* Category filter chips */
+  #chips{
+    position:absolute; top:100px; left:14px; right:14px; z-index:500;
+    display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; pointer-events:none;
+    -ms-overflow-style:none; scrollbar-width:none;
+  }
+  #chips::-webkit-scrollbar{ display:none; }
+  .chip{
+    pointer-events:auto; flex:0 0 auto;
+    background:rgba(27,36,56,0.82); border:1px solid var(--line); color:var(--paper);
+    border-radius:999px; padding:6px 12px; font-size:11.5px; white-space:nowrap; cursor:pointer;
+    display:flex; align-items:center; gap:5px; transition:all .15s;
+  }
+  .chip.active{ background:var(--amber); color:#231705; border-color:var(--amber); font-weight:700; }
+
+  /* Custom lantern markers */
+  .lantern-marker{ display:flex; flex-direction:column; align-items:center; filter:drop-shadow(0 3px 7px rgba(0,0,0,0.65)); cursor:pointer; }
+  .lantern-marker .flame{ width:5px; height:5px; border-radius:50%; background:var(--amber); box-shadow:0 0 6px 2px rgba(232,163,61,0.9); margin-bottom:1px; }
+  .lantern-marker .body{
+    width:36px; height:36px; border-radius:10px 10px 10px 2px;
+    display:flex; align-items:center; justify-content:center; font-size:18px;
+    border:2px solid rgba(255,255,255,0.55);
+  }
+  .lantern-marker .label{
+    margin-top:3px; background:rgba(20,26,42,0.92); color:var(--paper); font-size:10px; font-weight:500;
+    padding:2px 6px; border-radius:6px; white-space:nowrap; border:1px solid var(--line);
+    max-width:120px; overflow:hidden; text-overflow:ellipsis;
+  }
+  .live-marker{ display:flex; align-items:center; justify-content:center; }
+  .live-marker .ring{
+    width:16px; height:16px; border-radius:50%; background:var(--teal);
+    border:2px solid var(--paper); box-shadow:0 0 0 0 rgba(79,143,134,0.7);
+    animation:liveRing 1.8s infinite;
+  }
+  @keyframes liveRing{ 0%{box-shadow:0 0 0 0 rgba(79,143,134,0.6);} 70%{box-shadow:0 0 0 10px rgba(79,143,134,0);} 100%{box-shadow:0 0 0 0 rgba(79,143,134,0);} }
+  .live-label{
+    background:rgba(27,36,56,0.9); color:var(--paper); font-size:10px; padding:2px 6px;
+    border-radius:6px; border:1px solid var(--line); white-space:nowrap; font-weight:500;
+  }
+
+  /* Bottom bar */
+  #bottombar{
+    position:absolute; left:0; right:0; bottom:0; z-index:600;
+    display:flex; gap:8px; padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    background:linear-gradient(to top, rgba(15,20,34,0.95), rgba(15,20,34,0));
+  }
+  .barbtn{
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:9px 4px;
+    color:var(--paper); font-size:11px; cursor:pointer; box-shadow:var(--shadow);
+  }
+  .barbtn .ic{ font-size:16px; }
+  .barbtn.primary{ background:var(--ember); border-color:var(--ember); color:#241305; font-weight:700; }
+
+  /* Sheet */
+  #sheet{
+    position:absolute; left:0; right:0; bottom:0; z-index:700;
+    background:var(--panel); border-radius:20px 20px 0 0; border:1px solid var(--line); border-bottom:none;
+    box-shadow:0 -10px 30px rgba(0,0,0,0.5);
+    max-height:78%; display:flex; flex-direction:column;
+    transform:translateY(100%); transition:transform .28s cubic-bezier(.2,.8,.3,1);
+  }
+  #sheet.open{ transform:translateY(0); }
+  #sheetGrip{ width:36px; height:4px; background:var(--line); border-radius:99px; margin:10px auto 4px; }
+  #sheetHeader{ display:flex; align-items:center; justify-content:space-between; padding:6px 18px 10px; border-bottom:1px solid var(--line); }
+  #sheetTitleWrap{ display:flex; align-items:center; gap:8px; }
+  #sheetTitle{ font-family:'Shippori Mincho', serif; font-size:16px; font-weight:700; }
+  #sheetMeta{ font-size:11px; color:var(--muted); }
+  #sheetClose{ background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; padding:4px 6px; }
+  #sheetBody{ flex:1; overflow-y:auto; padding:10px 18px 16px; }
+  #sheetFooter{ padding:10px 14px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); display:flex; gap:8px; }
+
+  /* Spot list */
+  .spotrow{ display:flex; align-items:center; gap:10px; padding:10px 6px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .spotrow:last-child{ border-bottom:none; }
+  .spoticon{ width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:16px; flex:0 0 auto; }
+  .spotname{ font-size:13.5px; font-weight:500; }
+  .spotcat{ font-size:11px; color:var(--muted); }
+
+  /* Chat */
+  .msg{ margin-bottom:12px; max-width:82%; }
+  .msg .who{ font-size:10.5px; color:var(--amber); margin-bottom:2px; font-weight:700; display:flex; gap:6px; align-items:baseline; }
+  .msg .who .time{ font-size:9.5px; color:var(--muted); font-weight:500; }
+  .msg .bubble{ background:var(--panel-2); border:1px solid var(--line); padding:8px 11px; border-radius:4px 12px 12px 12px; font-size:13px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+  .msg.me{ margin-left:auto; }
+  .msg.me .who{ flex-direction:row-reverse; text-align:right; color:var(--teal); }
+  .msg.me .bubble{ background:var(--ember); color:#241305; border-color:var(--ember); border-radius:12px 4px 12px 12px; }
+  .emptyhint{ color:var(--muted); font-size:12.5px; text-align:center; padding:30px 10px; line-height:1.7; }
+
+  input[type=text], select, textarea{
+    background:var(--ink); border:1px solid var(--line); color:var(--paper);
+    border-radius:10px; padding:10px 12px; font-size:13px; font-family:inherit; width:100%;
+  }
+  input[type=text]:focus, select:focus, textarea:focus{ outline:1.5px solid var(--amber); }
+  .sendbtn{ background:var(--amber); color:#231705; border:none; border-radius:10px; padding:0 16px; font-weight:700; font-size:13px; cursor:pointer; flex:0 0 auto; }
+  .sendbtn:disabled{ opacity:.5; cursor:not-allowed; }
+  input[type=text]:disabled{ opacity:.6; }
+  .field{ margin-bottom:12px; }
+  .field label{ display:block; font-size:11.5px; color:var(--muted); margin-bottom:5px; }
+  .catgrid{ display:flex; flex-wrap:wrap; gap:6px; }
+  .catopt{ padding:7px 11px; border-radius:999px; border:1px solid var(--line); font-size:12px; cursor:pointer; background:var(--ink); }
+  .catopt.sel{ background:var(--amber); color:#231705; border-color:var(--amber); font-weight:700; }
+  .primarybtn{ background:var(--ember); color:#241305; border:none; border-radius:10px; padding:11px; font-weight:700; font-size:13.5px; width:100%; cursor:pointer; margin-top:4px; }
+  .ghostbtn{ background:none; border:1px solid var(--line); color:var(--muted); border-radius:10px; padding:11px; font-size:13px; width:100%; cursor:pointer; margin-top:8px; }
+
+  /* Modal (username) */
+  #modalOverlay{ position:absolute; inset:0; background:rgba(10,14,24,0.72); z-index:900; display:flex; align-items:center; justify-content:center; padding:20px; }
+  #modalCard{ background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px; max-width:320px; width:100%; box-shadow:var(--shadow); }
+  #modalCard h2{ font-family:'Shippori Mincho', serif; font-size:18px; margin:0 0 4px; }
+  #modalCard p{ font-size:12.5px; color:var(--muted); margin:0 0 16px; line-height:1.6; }
+  .hidden{ display:none !important; }
+
+  #addFlag{
+    position:absolute; top:148px; left:50%; transform:translateX(-50%); z-index:550;
+    background:var(--amber); color:#231705; font-size:12px; font-weight:700; padding:8px 8px 8px 14px;
+    border-radius:999px; box-shadow:var(--shadow); display:none; align-items:center; gap:8px;
+  }
+  #addFlagCancel{
+    background:rgba(35,23,5,0.18); border:none; color:#231705; width:20px; height:20px; border-radius:50%;
+    font-size:12px; line-height:20px; padding:0; cursor:pointer; flex:0 0 auto;
+  }
+
+  /* Spot move/delete actions */
+  #spotActions{ display:flex; gap:8px; padding:0 18px 12px; border-bottom:1px solid var(--line); }
+  #spotActions.hidden{ display:none; }
+  .actionbtn{
+    flex:1; background:var(--ink); border:1px solid var(--line); color:var(--paper);
+    border-radius:10px; padding:8px 6px; font-size:12px; font-weight:500; cursor:pointer;
+  }
+  .actionbtn:hover{ background:var(--panel-2); }
+  .actionbtn.danger{ border-color:var(--ember); color:var(--ember); }
+  .actionbtn.danger:hover{ background:rgba(217,100,58,0.12); }
+
+  /* 3D map */
+  #map3d{ position:absolute; inset:0; background:var(--ink); display:none; }
+  #map3d.active{ display:block; }
+  #map.hidden3d{ visibility:hidden; }
+  .maplibregl-ctrl-attrib{ font-size:9px !important; background:rgba(27,36,56,0.7) !important; color:var(--muted) !important; }
+  .maplibregl-ctrl-attrib a{ color:var(--muted) !important; }
+  .maplibregl-ctrl-bottom-left{ display:none; }
+  .maplibregl-ctrl-group{ background:rgba(27,36,56,0.92) !important; border:1px solid var(--line) !important; box-shadow:var(--shadow) !important; }
+  .maplibregl-ctrl-group button{ width:32px !important; height:32px !important; }
+  .maplibregl-ctrl-group button span{ filter:invert(1) brightness(1.6); }
+  .maplibregl-ctrl-bottom-right{ margin-bottom:74px; }
+
+  #dimToggle{
+    pointer-events:auto;
+    display:flex; align-items:center; gap:6px;
+    background:rgba(27,36,56,0.88); backdrop-filter:blur(6px);
+    border:1px solid var(--line); border-radius:999px;
+    padding:9px 14px; font-size:12px; font-weight:500; color:var(--paper);
+    box-shadow:var(--shadow); cursor:pointer; transition:all .2s;
+  }
+  #dimToggle.on{ background:var(--amber); color:#231705; border-color:var(--amber); font-weight:700; }
+  #headerRight{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; pointer-events:none; }
+  #headerRight > *{ pointer-events:auto; }
+
+  #map3dLoading{
+    position:absolute; inset:0; z-index:10; display:none; align-items:center; justify-content:center;
+    flex-direction:column; gap:8px; background:var(--ink); color:var(--muted); font-size:12.5px;
+  }
+  #map3dLoading .spin{
+    width:22px; height:22px; border-radius:50%; border:2.5px solid var(--line); border-top-color:var(--amber);
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <div id="map3d">
+    <div id="map3dLoading"><div class="spin"></div><div>3Dマップを準備中...</div></div>
+  </div>
+
+  <div id="header">
+    <div id="brand">
+      <span class="lantern">🏮</span>
+      <div>
+        <div class="title">神楽坂マップ</div>
+        <div class="sub">東京理科大学 神楽坂キャンパス周辺</div>
+      </div>
+    </div>
+    <div id="headerRight">
+      <div id="liveBtn" onclick="toggleLiveSharing()">
+        <span class="dot"></span><span id="liveBtnLabel">位置共有</span>
+      </div>
+      <div id="dimToggle" onclick="toggleDimension()">
+        <span id="dimToggleIcon">🏙️</span><span id="dimToggleLabel">3Dマップ</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="chips"></div>
+  <div id="addFlag"><span id="addFlagText">📍 地図をタップして場所を決めてください</span><button id="addFlagCancel" onclick="cancelPlacement()">✕</button></div>
+
+  <div id="bottombar">
+    <div class="barbtn" onclick="openList()"><span class="ic">🗺️</span>スポット一覧</div>
+    <div class="barbtn" onclick="openGeneralChat()"><span class="ic">💬</span>雑談チャット</div>
+    <div class="barbtn primary" onclick="startAddSpot()"><span class="ic">＋</span>スポット追加</div>
+  </div>
+
+  <div id="sheet">
+    <div id="sheetGrip"></div>
+    <div id="sheetHeader">
+      <div id="sheetTitleWrap">
+        <div>
+          <div id="sheetTitle">-</div>
+          <div id="sheetMeta"></div>
+        </div>
+      </div>
+      <button id="sheetClose" onclick="closeSheet()">✕</button>
+    </div>
+    <div id="spotActions" class="hidden">
+      <button class="actionbtn" onclick="startMoveSpot(currentSpotId)">📍 位置を移動</button>
+      <button class="actionbtn danger" onclick="deleteSpot(currentSpotId)">🗑️ このピンを削除</button>
+    </div>
+    <div id="sheetBody"></div>
+    <div id="sheetFooter" class="hidden">
+      <input type="text" id="chatInput" placeholder="メッセージを入力..." />
+      <button class="sendbtn" onclick="handleSend()">送信</button>
+    </div>
+  </div>
+
+  <div id="modalOverlay">
+    <div id="modalCard">
+      <h2>ようこそ 🏮</h2>
+      <p>友達と一緒に使うので、まずニックネームを教えてください。地図やチャットに表示されます。</p>
+      <div class="field">
+        <input type="text" id="nameInput" placeholder="例: たなか" maxlength="20" />
+      </div>
+      <button class="primarybtn" onclick="saveUsername()">はじめる</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<!-- [Supabase対応] Supabase JavaScript SDK（CDN経由・ビルド不要） -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ============================================================
+   [Supabase対応] Supabase 接続設定
+   ------------------------------------------------------------
+   下の2つの値だけを、あなたのSupabaseプロジェクトのものに書き換えてください。
+   これ以外の変更は不要です（GitHub Pagesにそのままアップロードして動作します）。
+   ・SUPABASE_URL      : Supabaseプロジェクトの Project URL
+   ・SUPABASE_ANON_KEY  : Supabaseプロジェクトの anon public キー
+   ============================================================ */
+const SUPABASE_URL = 'https://dhcbefzlgocliwvvtvel.supabase.co';       // ← [修正] 末尾の /rest/v1/ はSDKが自動付与するため不要（余分だと通信に失敗する）
+const SUPABASE_ANON_KEY = 'sb_publishable_V_Jac_kdmRh3G9UneiLx0A_U3kcYazR';        // ← [Supabase対応] ここを書き換え
+
+/* ---------- data ---------- */
+const CATS = {
+  university:{label:'大学', color:'#B94A3D', icon:'🏛️'},
+  station:{label:'駅', color:'#8B8680', icon:'🚉'},
+  food:{label:'飲食', color:'#E8A33D', icon:'🍔'},
+  arcade:{label:'ゲーセン', color:'#7B5EA7', icon:'🎮'},
+  convenience:{label:'コンビニ', color:'#4F8F86', icon:'🏪'},
+  study:{label:'空き教室/勉強', color:'#3D6FE8', icon:'📚'},
+  other:{label:'その他', color:'#D9643A', icon:'📍'}
+};
+
+const DEFAULT_SPOTS = [
+  {id:'d-univ', name:'東京理科大学 神楽坂キャンパス', category:'university', lat:35.7000277, lng:139.7414639, note:'神楽坂キャンパス正門周辺', by:'運営', isDefault:true},
+  {id:'d-st-ground', name:'飯田橋駅（地上・JR口）', category:'station', lat:35.7020837, lng:139.7450232, note:'JR中央・総武線 改札口', by:'運営', isDefault:true},
+  {id:'d-st-under', name:'飯田橋駅（地下・メトロ口 B3出口）', category:'station', lat:35.700640, lng:139.742500, note:'東京メトロ有楽町線・南北線 B3出口', by:'運営', isDefault:true},
+  {id:'d-firstkitchen', name:'ファーストキッチン 飯田橋', category:'food', lat:35.7012028, lng:139.7439833, note:'バーガー・軽食。勉強にも使える席あり', by:'運営', isDefault:true},
+  {id:'d-gigo', name:'GIGO 神楽坂（ゲームセンター）', category:'arcade', lat:35.7010470, lng:139.7419980, note:'クレーンゲーム・アーケード', by:'運営', isDefault:true},
+  {id:'d-familymart', name:'ファミリーマート 神楽坂店', category:'convenience', lat:35.7009900, lng:139.7418200, note:'GIGO（ゲームセンター）のすぐ隣', by:'運営', isDefault:true},
+];
+
+const MAP_CENTER = [35.70085, 139.74300];
+
+/* ---------- state ---------- */
+let map, markersLayer, liveLayer;
+let map3d = null, map3dReady = false, is3D = false, map3dMarkers = [];
+let username = null;
+let customSpots = [];
+let spotOverrides = {}; // { [spotId]: { lat, lng, deleted } } — used to move/delete any spot (default or custom)
+let allSpots = [];
+let activeFilters = new Set(Object.keys(CATS));
+let addMode = false;
+let moveModeId = null; // spot id currently being repositioned by tapping the map
+let tempMarker = null;
+let currentSpotId = null; // null = general chat / list mode
+let liveSharing = false;
+let liveShareInterval = null;
+let livePollInterval = null;
+let chatPollInterval = null;
+let chatMessages = []; // 現在開いているチャット（雑談 or スポット）のメッセージキャッシュ
+const CHAT_TTL_MS = 24 * 60 * 60 * 1000; // チャットは24時間で自動的に消える
+const LIVE_TTL_MS = 5 * 60 * 1000; // 位置共有は5分間更新がなければ非表示
+
+/* ============================================================
+   [Supabase対応] Supabase まわりの処理は、すべてこのブロックにまとめています。
+   ------------------------------------------------------------
+   ・DB操作はすべて関数化し、try-catchでエラーハンドリングしています。
+   ・console.log ではなく console.error を使用しています。
+   ・Realtime購読（postgres_changes）もここで一括管理しています。
+   ============================================================ */
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const TABLES = {
+  spots: 'spots',
+  overrides: 'spot_overrides',
+  chat: 'chat_messages',
+  live: 'live_locations'
+};
+
+let realtimeChannels = []; // マウント中の常時購読チャンネル（spots / overrides / live_locations）
+let chatChannel = null;    // 現在開いているチャット専用チャンネル（開閉のたびに張り替える）
+
+/* --- スポット（ユーザーが追加したカスタムスポット） --- */
+async function dbFetchSpots(){
+  try{
+    const { data, error } = await sb
+      .from(TABLES.spots)
+      .select('*')
+      .order('created_at', { ascending: true });
+    if(error) throw error;
+    return (data || []).map(rowToSpot);
+  }catch(err){
+    console.error('スポット一覧の取得に失敗しました', err);
+    return [];
+  }
+}
+
+function rowToSpot(r){
+  return {
+    id: r.id, name: r.name, category: r.category,
+    lat: r.lat, lng: r.lng, note: r.note || '',
+    by: r.created_by || '匿名', isDefault: false,
+    createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now()
+  };
+}
+
+async function dbInsertSpot(spot){
+  try{
+    const { error } = await sb.from(TABLES.spots).insert({
+      id: spot.id,
+      name: spot.name,
+      category: spot.category,
+      lat: spot.lat,
+      lng: spot.lng,
+      note: spot.note,
+      created_by: spot.by
+    });
+    if(error) throw error;
+    return true;
+  }catch(err){
+    console.error('スポットの追加に失敗しました', err);
+    return false;
+  }
+}
+
+/* --- スポットの移動・削除（default/custom どちらにも使える override） --- */
+async function dbFetchOverrides(){
+  try{
+    const { data, error } = await sb.from(TABLES.overrides).select('*');
+    if(error) throw error;
+    const map = {};
+    (data || []).forEach(r => {
+      map[r.spot_id] = { lat: r.lat, lng: r.lng, deleted: !!r.deleted };
+    });
+    return map;
+  }catch(err){
+    console.error('スポットの変更情報の取得に失敗しました', err);
+    return {};
+  }
+}
+
+async function dbUpsertOverride(spotId, fullPatch){
+  try{
+    const { error } = await sb.from(TABLES.overrides).upsert({
+      spot_id: spotId,
+      lat: (fullPatch.lat != null) ? fullPatch.lat : null,
+      lng: (fullPatch.lng != null) ? fullPatch.lng : null,
+      deleted: !!fullPatch.deleted,
+      updated_by: username,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'spot_id' });
+    if(error) throw error;
+    return true;
+  }catch(err){
+    console.error('スポットの更新に失敗しました', err);
+    return false;
+  }
+}
+
+/* --- チャット（雑談チャット・スポットチャット共通。spot_id = 'general' or スポットID） --- */
+async function dbFetchChatMessages(spotId){
+  try{
+    const cutoffIso = new Date(Date.now() - CHAT_TTL_MS).toISOString();
+    const { data, error } = await sb
+      .from(TABLES.chat)
+      .select('*')
+      .eq('spot_id', spotId)
+      .gte('created_at', cutoffIso) // 24時間を過ぎたメッセージは取得しない
+      .order('created_at', { ascending: false })
+      .limit(100); // 最新100件のみ
+    if(error) throw error;
+    return (data || []).reverse().map(rowToMessage);
+  }catch(err){
+    console.error('チャットの取得に失敗しました', err);
+    return [];
+  }
+}
+
+function rowToMessage(r){
+  return { id: r.id, user: r.user_name, text: r.text, ts: new Date(r.created_at).getTime() };
+}
+
+async function dbInsertChatMessage(spotId, user, text){
+  try{
+    const id = Date.now() + '-' + Math.random().toString(36).slice(2,7);
+    const { error } = await sb.from(TABLES.chat).insert({
+      id, spot_id: spotId, user_name: user, text
+      // created_at はSupabase側のデフォルト値（now()）を使用
+    });
+    if(error) throw error;
+    return true;
+  }catch(err){
+    console.error('メッセージの送信に失敗しました', err);
+    return false;
+  }
+}
+
+/* --- 位置共有 --- */
+async function dbUpsertLiveLocation(user, lat, lng){
+  try{
+    const { error } = await sb.from(TABLES.live).upsert({
+      user_name: user, lat, lng, updated_at: new Date().toISOString()
+    }, { onConflict: 'user_name' });
+    if(error) throw error;
+    return true;
+  }catch(err){
+    console.error('位置情報の共有に失敗しました', err);
+    return false;
+  }
+}
+
+async function dbDeleteLiveLocation(user){
+  try{
+    const { error } = await sb.from(TABLES.live).delete().eq('user_name', user);
+    if(error) throw error;
+    return true;
+  }catch(err){
+    console.error('位置情報の削除に失敗しました', err);
+    return false;
+  }
+}
+
+async function dbFetchLiveLocations(){
+  try{
+    const cutoffIso = new Date(Date.now() - LIVE_TTL_MS).toISOString();
+    const { data, error } = await sb
+      .from(TABLES.live)
+      .select('*')
+      .gte('updated_at', cutoffIso); // 5分以上前の位置情報は取得しない
+    if(error) throw error;
+    return data || [];
+  }catch(err){
+    console.error('位置情報の取得に失敗しました', err);
+    return [];
+  }
+}
+
+/* --- Realtime購読（他ユーザーの更新を自動的に画面へ反映） --- */
+function setupRealtimeSubscriptions(){
+  try{
+    // スポット追加のリアルタイム反映
+    const spotsChannel = sb
+      .channel('realtime:spots')
+      .on('postgres_changes', { event:'INSERT', schema:'public', table: TABLES.spots }, (payload) => {
+        const spot = rowToSpot(payload.new);
+        if(!customSpots.some(s => s.id === spot.id)){
+          customSpots.push(spot);
+          renderMarkers();
+        }
+      })
+      .subscribe();
+
+    // スポットの移動・削除のリアルタイム反映
+    const overridesChannel = sb
+      .channel('realtime:spot_overrides')
+      .on('postgres_changes', { event:'*', schema:'public', table: TABLES.overrides }, (payload) => {
+        const r = payload.new || payload.old;
+        if(!r || !r.spot_id) return;
+        spotOverrides[r.spot_id] = { lat: r.lat, lng: r.lng, deleted: !!r.deleted };
+        renderMarkers();
+        // 今開いているスポットが他ユーザーに削除された場合はシートを閉じる
+        if(currentSpotId === r.spot_id && r.deleted){
+          buildAllSpots();
+          if(!allSpots.find(s => s.id === r.spot_id)){ closeSheet(); }
+        }
+      })
+      .subscribe();
+
+    // 位置共有のリアルタイム反映
+    const liveChannel = sb
+      .channel('realtime:live_locations')
+      .on('postgres_changes', { event:'*', schema:'public', table: TABLES.live }, () => {
+        loadLivePositions();
+      })
+      .subscribe();
+
+    realtimeChannels = [spotsChannel, overridesChannel, liveChannel];
+  }catch(err){
+    console.error('Realtime購読の開始に失敗しました', err);
+  }
+}
+
+function subscribeChatRealtime(spotId){
+  try{
+    unsubscribeChatRealtime();
+    chatChannel = sb
+      .channel('realtime:chat_messages:' + spotId)
+      .on('postgres_changes', { event:'INSERT', schema:'public', table: TABLES.chat, filter:`spot_id=eq.${spotId}` }, (payload) => {
+        appendChatMessage(rowToMessage(payload.new));
+      })
+      .subscribe();
+  }catch(err){
+    console.error('チャットのRealtime購読に失敗しました', err);
+  }
+}
+
+function unsubscribeChatRealtime(){
+  if(chatChannel){
+    try{ sb.removeChannel(chatChannel); }
+    catch(err){ console.error('チャットチャンネルの解除に失敗しました', err); }
+    chatChannel = null;
+  }
+}
+
+/* ---------- init ---------- */
+window.addEventListener('DOMContentLoaded', init);
+
+async function init(){
+  buildChips();
+  initMap();
+  loadProfile(); // [変更] window.storage → localStorage（ユーザー名は端末内だけで使う個人設定のため）
+  await loadSpots();
+  renderMarkers();
+  setupRealtimeSubscriptions(); // [Supabase対応] スポット/位置共有のリアルタイム購読を開始
+  livePollInterval = setInterval(loadLivePositions, 9000); // 5分経過による自動非表示チェック用のフォールバック
+  loadLivePositions();
+}
+
+/* [変更] プロフィール（ニックネーム）は他ユーザーと共有しない個人設定のため、
+   window.storage ではなく localStorage に保存します（Supabaseのテーブルは不要）。 */
+function loadProfile(){
+  try{
+    const raw = localStorage.getItem('kagurazaka-map:profile');
+    if(raw){
+      const p = JSON.parse(raw);
+      username = p.name;
+    }
+  }catch(err){
+    console.error('プロフィールの読み込みに失敗しました', err);
+  }
+  if(username){
+    document.getElementById('modalOverlay').classList.add('hidden');
+  }
+}
+
+function saveUsername(){
+  const val = document.getElementById('nameInput').value.trim();
+  if(!val){ return; }
+  username = val;
+  try{
+    localStorage.setItem('kagurazaka-map:profile', JSON.stringify({name: val}));
+  }catch(err){
+    console.error('プロフィールの保存に失敗しました', err);
+  }
+  document.getElementById('modalOverlay').classList.add('hidden');
+}
+
+/* ---------- map ---------- */
+function initMap(){
+  map = L.map('map', { zoomControl:false, attributionControl:true }).setView(MAP_CENTER, 16);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    maxZoom: 20,
+    subdomains: 'abcd',
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+  }).addTo(map);
+  markersLayer = L.layerGroup().addTo(map);
+  liveLayer = L.layerGroup().addTo(map);
+
+  map.on('click', (e) => {
+    if(addMode){ placeTempMarker(e.latlng); }
+    else if(moveModeId){ confirmMoveSpot(moveModeId, e.latlng); }
+  });
+  map.on('zoomend', renderMarkers);
+}
+
+function makeLanternIcon(cat, name){
+  const meta = CATS[cat] || CATS.other;
+  const label = name ? `<div class="label">${escapeHtml(name)}</div>` : '';
+  return L.divIcon({
+    className:'', html:`<div class="lantern-marker"><div class="flame"></div><div class="body" style="background:${meta.color};">${meta.icon}</div>${label}</div>`,
+    iconSize:[120,name ? 62 : 44], iconAnchor:[60,44], popupAnchor:[0,-36]
+  });
+}
+
+function renderMarkers(){
+  markersLayer.clearLayers();
+  buildAllSpots();
+  const zoom = map.getZoom();
+  allSpots.filter(s => activeFilters.has(s.category)).forEach(spot => {
+    const m = L.marker([spot.lat, spot.lng], { icon: makeLanternIcon(spot.category, zoom >= 16 ? spot.name : null) });
+    m.on('click', () => openSpot(spot.id));
+    m.addTo(markersLayer);
+  });
+  if(map3dReady) render3DMarkers();
+}
+
+/* ---------- 3D map ---------- */
+function toggleDimension(){
+  if(is3D){
+    // switch back to 2D, sync center/zoom from the 3D map
+    if(map3d){
+      const c = map3d.getCenter();
+      map.setView([c.lat, c.lng], Math.round(map3d.getZoom()));
+    }
+    document.getElementById('map3d').classList.remove('active');
+    document.getElementById('map').classList.remove('hidden3d');
+    document.getElementById('dimToggle').classList.remove('on');
+    document.getElementById('dimToggleIcon').textContent = '🏙️';
+    document.getElementById('dimToggleLabel').textContent = '3Dマップ';
+    is3D = false;
+    setTimeout(() => map.invalidateSize(), 50);
+    return;
+  }
+  // switch to 3D
+  is3D = true;
+  document.getElementById('map3d').classList.add('active');
+  document.getElementById('map').classList.add('hidden3d');
+  document.getElementById('dimToggle').classList.add('on');
+  document.getElementById('dimToggleIcon').textContent = '🗺️';
+  document.getElementById('dimToggleLabel').textContent = '2Dマップ';
+  const center = map.getCenter();
+  const zoom = map.getZoom();
+  if(!map3dReady){
+    init3DMap(center, zoom);
+  } else {
+    map3d.jumpTo({ center:[center.lng, center.lat], zoom, pitch:58, bearing:-18 });
+    setTimeout(() => map3d.resize(), 50);
+  }
+}
+
+function init3DMap(center, zoom){
+  document.getElementById('map3dLoading').style.display = 'flex';
+  try{
+    map3d = new maplibregl.Map({
+      container: 'map3d',
+      style: 'https://tiles.openfreemap.org/styles/liberty',
+      center: [center.lng, center.lat],
+      zoom: zoom,
+      pitch: 58,
+      bearing: -18,
+      attributionControl: true
+    });
+    map3d.addControl(new maplibregl.NavigationControl({ visualizePitch:true }), 'bottom-right');
+    map3d.on('load', () => {
+      map3dReady = true;
+      document.getElementById('map3dLoading').style.display = 'none';
+      render3DMarkers();
+    });
+    map3d.on('error', (e) => {
+      console.error('3Dマップの読み込みに失敗しました', e && e.error);
+      document.getElementById('map3dLoading').innerHTML = '3Dマップを読み込めませんでした。<br>通信環境をご確認ください。';
+    });
+  } catch(err){
+    console.error('3Dマップの初期化に失敗しました', err);
+    document.getElementById('map3dLoading').innerHTML = 'このブラウザでは3Dマップを表示できません。';
+  }
+}
+
+function render3DMarkers(){
+  if(!map3d || !map3dReady) return;
+  map3dMarkers.forEach(m => m.remove());
+  map3dMarkers = [];
+  allSpots.filter(s => activeFilters.has(s.category)).forEach(spot => {
+    const meta = CATS[spot.category] || CATS.other;
+    const el = document.createElement('div');
+    el.className = 'lantern-marker';
+    el.style.cursor = 'pointer';
+    el.innerHTML = `<div class="flame"></div><div class="body" style="background:${meta.color};">${meta.icon}</div><div class="label">${escapeHtml(spot.name)}</div>`;
+    el.addEventListener('click', () => openSpot(spot.id));
+    const marker = new maplibregl.Marker({ element: el, anchor:'bottom' })
+      .setLngLat([spot.lng, spot.lat])
+      .addTo(map3d);
+    map3dMarkers.push(marker);
+  });
+}
+
+function buildChips(){
+  const wrap = document.getElementById('chips');
+  wrap.innerHTML = '';
+  Object.entries(CATS).forEach(([key, meta]) => {
+    const chip = document.createElement('div');
+    chip.className = 'chip active';
+    chip.innerHTML = `${meta.icon} ${meta.label}`;
+    chip.onclick = () => {
+      if(activeFilters.has(key)){ activeFilters.delete(key); chip.classList.remove('active'); }
+      else { activeFilters.add(key); chip.classList.add('active'); }
+      renderMarkers();
+    };
+    wrap.appendChild(chip);
+  });
+}
+
+/* ---------- spots ---------- */
+/* [変更] window.storage.get('spots'/'overrides') → Supabaseから取得 */
+async function loadSpots(){
+  customSpots = await dbFetchSpots();
+  spotOverrides = await dbFetchOverrides();
+}
+
+function buildAllSpots(){
+  allSpots = DEFAULT_SPOTS.concat(customSpots)
+    .map(s => {
+      const ov = spotOverrides[s.id];
+      if(!ov) return s;
+      return Object.assign({}, s, {
+        lat: (ov.lat != null) ? ov.lat : s.lat,
+        lng: (ov.lng != null) ? ov.lng : s.lng,
+        deleted: !!ov.deleted
+      });
+    })
+    .filter(s => !s.deleted);
+}
+
+/* ---------- move / delete existing spots ---------- */
+function startMoveSpot(id){
+  if(!id) return;
+  if(!username){ document.getElementById('modalOverlay').classList.remove('hidden'); return; }
+  if(is3D){ toggleDimension(); }
+  moveModeId = id;
+  addMode = false;
+  document.getElementById('addFlagText').textContent = '📍 新しい位置をタップしてください';
+  document.getElementById('addFlag').style.display = 'flex';
+  closeSheet();
+}
+
+/* [変更] window.storage.set('overrides', ...) → Supabase の spot_overrides を upsert */
+async function confirmMoveSpot(id, latlng){
+  const merged = Object.assign({}, spotOverrides[id], { lat: latlng.lat, lng: latlng.lng });
+  const ok = await dbUpsertOverride(id, merged);
+  if(!ok){
+    alert('位置の更新に失敗しました。通信環境をご確認のうえ、もう一度お試しください。');
+    return;
+  }
+  spotOverrides[id] = merged;
+  moveModeId = null;
+  document.getElementById('addFlag').style.display = 'none';
+  buildAllSpots();
+  renderMarkers();
+  openSpot(id);
+}
+
+/* [変更] window.storage.set('overrides', ...) → Supabase の spot_overrides を upsert（論理削除） */
+async function deleteSpot(id){
+  if(!id) return;
+  if(!username){ document.getElementById('modalOverlay').classList.remove('hidden'); return; }
+  const spot = allSpots.find(s => s.id === id);
+  const label = spot ? spot.name : 'このピン';
+  if(!confirm(`「${label}」を削除しますか？この操作は元に戻せません。`)) return;
+  const merged = Object.assign({}, spotOverrides[id], { deleted:true });
+  const ok = await dbUpsertOverride(id, merged);
+  if(!ok){
+    alert('削除に失敗しました。通信環境をご確認のうえ、もう一度お試しください。');
+    return;
+  }
+  spotOverrides[id] = merged;
+  closeSheet();
+  buildAllSpots();
+  renderMarkers();
+}
+
+function cancelPlacement(){
+  addMode = false;
+  moveModeId = null;
+  document.getElementById('addFlag').style.display = 'none';
+  if(tempMarker){ map.removeLayer(tempMarker); tempMarker = null; }
+}
+
+function startAddSpot(){
+  if(!username){ document.getElementById('modalOverlay').classList.remove('hidden'); return; }
+  if(is3D){ toggleDimension(); }
+  addMode = true;
+  moveModeId = null;
+  document.getElementById('addFlagText').textContent = '📍 地図をタップして場所を決めてください';
+  document.getElementById('addFlag').style.display = 'flex';
+  closeSheet();
+}
+
+function placeTempMarker(latlng){
+  if(tempMarker){ map.removeLayer(tempMarker); }
+  tempMarker = L.marker(latlng, { icon: makeLanternIcon('other') }).addTo(map);
+  addMode = false;
+  document.getElementById('addFlag').style.display = 'none';
+  openAddForm(latlng);
+}
+
+function openAddForm(latlng){
+  currentSpotId = null;
+  document.getElementById('sheetTitle').textContent = '新しいスポットを追加';
+  document.getElementById('sheetMeta').textContent = '';
+  document.getElementById('spotActions').classList.add('hidden');
+  document.getElementById('sheetFooter').classList.add('hidden');
+
+  let selectedCat = 'other';
+  const body = document.getElementById('sheetBody');
+  body.innerHTML = `
+    <div class="field">
+      <label>スポット名</label>
+      <input type="text" id="newSpotName" placeholder="例: 〇〇カフェ、空いてる自習室 など" maxlength="30" />
+    </div>
+    <div class="field">
+      <label>カテゴリ</label>
+      <div class="catgrid" id="catgrid"></div>
+    </div>
+    <div class="field">
+      <label>コメント（任意）</label>
+      <input type="text" id="newSpotNote" placeholder="営業時間や混雑状況など" maxlength="80" />
+    </div>
+    <button class="primarybtn" onclick="confirmAddSpot()">この場所に追加する</button>
+    <button class="ghostbtn" onclick="cancelAddSpot()">キャンセル</button>
+  `;
+  const grid = document.getElementById('catgrid');
+  Object.entries(CATS).forEach(([key, meta]) => {
+    const opt = document.createElement('div');
+    opt.className = 'catopt' + (key === selectedCat ? ' sel' : '');
+    opt.textContent = `${meta.icon} ${meta.label}`;
+    opt.onclick = () => {
+      document.querySelectorAll('.catopt').forEach(el => el.classList.remove('sel'));
+      opt.classList.add('sel');
+      selectedCat = key;
+    };
+    opt.dataset.cat = key;
+    grid.appendChild(opt);
+  });
+
+  window.__pendingLatLng = latlng;
+  window.__getSelectedCat = () => {
+    const sel = document.querySelector('.catopt.sel');
+    return sel ? sel.dataset.cat : 'other';
+  };
+  openSheet();
+}
+
+/* [変更] window.storage.set('spots', ...) → Supabase の spots テーブルへ insert */
+async function confirmAddSpot(){
+  const name = document.getElementById('newSpotName').value.trim();
+  if(!name){ alert('スポット名を入力してください'); return; }
+  const note = document.getElementById('newSpotNote').value.trim();
+  const cat = window.__getSelectedCat();
+  const latlng = window.__pendingLatLng;
+  const spot = {
+    id: 'c-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    name, category: cat, lat: latlng.lat, lng: latlng.lng,
+    note: note || '', by: username, isDefault:false, createdAt: Date.now()
+  };
+  const ok = await dbInsertSpot(spot);
+  if(!ok){
+    alert('スポットの追加に失敗しました。通信環境をご確認のうえ、もう一度お試しください。');
+    return;
+  }
+  if(!customSpots.some(s => s.id === spot.id)){ customSpots.push(spot); }
+  cancelAddSpot();
+  renderMarkers();
+  openSpot(spot.id);
+}
+
+function cancelAddSpot(){
+  addMode = false;
+  if(tempMarker){ map.removeLayer(tempMarker); tempMarker = null; }
+  closeSheet();
+}
+
+/* ---------- spot list ---------- */
+async function openList(){
+  await loadSpots();
+  renderMarkers();
+  currentSpotId = null;
+  document.getElementById('sheetTitle').textContent = 'スポット一覧';
+  document.getElementById('sheetMeta').textContent = `全 ${allSpots.length} 件`;
+  document.getElementById('spotActions').classList.add('hidden');
+  document.getElementById('sheetFooter').classList.add('hidden');
+  const body = document.getElementById('sheetBody');
+  body.innerHTML = '';
+  allSpots.forEach(spot => {
+    const meta = CATS[spot.category] || CATS.other;
+    const row = document.createElement('div');
+    row.className = 'spotrow';
+    row.innerHTML = `
+      <div class="spoticon" style="background:${meta.color};">${meta.icon}</div>
+      <div>
+        <div class="spotname">${escapeHtml(spot.name)}</div>
+        <div class="spotcat">${meta.label} ・ ${escapeHtml(spot.by || '')}</div>
+      </div>`;
+    row.onclick = () => {
+      openSpot(spot.id);
+      if(is3D && map3d){ map3d.flyTo({ center:[spot.lng, spot.lat], zoom:17.5, pitch:58, duration:600 }); }
+      else { map.flyTo([spot.lat, spot.lng], 17, {duration:0.6}); }
+    };
+    body.appendChild(row);
+  });
+  openSheet();
+}
+
+/* ---------- spot detail + chat ---------- */
+async function openSpot(id){
+  if(!allSpots.length) buildAllSpots();
+  const spot = allSpots.find(s => s.id === id);
+  if(!spot) return;
+  currentSpotId = id;
+  const meta = CATS[spot.category] || CATS.other;
+  document.getElementById('sheetTitle').textContent = `${meta.icon} ${spot.name}`;
+  document.getElementById('sheetMeta').textContent = spot.note ? spot.note : `${meta.label} ・ 登録: ${spot.by || '匿名'}`;
+  document.getElementById('spotActions').classList.remove('hidden');
+  document.getElementById('sheetFooter').classList.remove('hidden');
+  document.getElementById('sheetBody').innerHTML = '<div class="emptyhint">読み込み中...</div>';
+  openSheet();
+  subscribeChatRealtime(currentSpotId); // [Supabase対応] このスポットのチャットをRealtime購読
+  await refreshChat();
+  clearInterval(chatPollInterval);
+  chatPollInterval = setInterval(refreshChat, 30000); // Realtimeが主・ポーリングは古いメッセージの間引き用フォールバック
+}
+
+async function openGeneralChat(){
+  currentSpotId = 'general';
+  document.getElementById('sheetTitle').textContent = '💬 雑談チャット';
+  document.getElementById('sheetMeta').textContent = 'キャンパス周辺のことをなんでも話そう';
+  document.getElementById('spotActions').classList.add('hidden');
+  document.getElementById('sheetFooter').classList.remove('hidden');
+  document.getElementById('sheetBody').innerHTML = '<div class="emptyhint">読み込み中...</div>';
+  openSheet();
+  subscribeChatRealtime(currentSpotId); // [Supabase対応] 雑談チャットをRealtime購読
+  await refreshChat();
+  clearInterval(chatPollInterval);
+  chatPollInterval = setInterval(refreshChat, 30000);
+}
+
+function pruneOldMessages(){
+  const cutoff = Date.now() - CHAT_TTL_MS;
+  const before = chatMessages.length;
+  chatMessages = chatMessages.filter(m => (m && typeof m.ts === 'number') ? m.ts >= cutoff : true);
+  return chatMessages.length !== before;
+}
+
+function formatTime(ts){
+  if(!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if(sameDay) return `${hh}:${mm}`;
+  const MM = String(d.getMonth() + 1).padStart(2, '0');
+  const DD = String(d.getDate()).padStart(2, '0');
+  return `${MM}/${DD} ${hh}:${mm}`;
+}
+
+function renderChatMessages(){
+  const body = document.getElementById('sheetBody');
+  if(chatMessages.length === 0){
+    body.innerHTML = '<div class="emptyhint">まだメッセージがありません。<br>最初のメッセージを送ってみましょう 🏮<br><span style="font-size:11px;">※メッセージは24時間で自動的に消えます</span></div>';
+    return;
+  }
+  // [維持] 送信・受信のたびにスクロール位置を維持する
+  const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 30;
+  body.innerHTML = chatMessages.map(m => `
+    <div class="msg ${m.user === username ? 'me' : ''}">
+      <div class="who"><span>${escapeHtml(m.user)}</span><span class="time">${formatTime(m.ts)}</span></div>
+      <div class="bubble">${escapeHtml(m.text)}</div>
+    </div>`).join('');
+  if(atBottom || chatMessages.length <= 3){ body.scrollTop = body.scrollHeight; }
+}
+
+/* [変更] window.storage.get('chat:...') → Supabaseから最新100件・24時間以内のみ取得 */
+async function refreshChat(){
+  if(!currentSpotId) return;
+  chatMessages = await dbFetchChatMessages(currentSpotId);
+  pruneOldMessages();
+  renderChatMessages();
+}
+
+/* [Supabase対応] Realtimeで届いた新着メッセージを画面へ反映（自分の送信分も含めて重複防止） */
+function appendChatMessage(msg){
+  if(!currentSpotId) return;
+  if(chatMessages.some(m => m.id === msg.id)) return;
+  chatMessages.push(msg);
+  pruneOldMessages();
+  renderChatMessages();
+}
+
+/* [変更] window.storage.set('chat:...') → Supabaseの chat_messages へ insert */
+async function handleSend(){
+  if(!username){ document.getElementById('modalOverlay').classList.remove('hidden'); return; }
+  if(!currentSpotId) return;
+  const input = document.getElementById('chatInput');
+  const sendBtn = document.querySelector('#sheetFooter .sendbtn');
+  const text = input.value.trim();
+  if(!text) return;
+
+  // [維持] 二重送信防止：送信中は入力欄とボタンを無効化する
+  input.disabled = true;
+  if(sendBtn) sendBtn.disabled = true;
+  try{
+    const ok = await dbInsertChatMessage(currentSpotId, username, text);
+    if(!ok) throw new Error('insert failed');
+
+    // 保存に成功したときだけ入力欄をクリアする（失敗時に入力内容を失わないため）
+    input.value = '';
+    await refreshChat();
+  } catch(err){
+    console.error('メッセージの送信に失敗しました', err);
+    alert('メッセージを送信できませんでした。通信環境をご確認のうえ、もう一度お試しください。');
+  } finally {
+    input.disabled = false;
+    if(sendBtn) sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+document.getElementById('chatInput').addEventListener('keydown', (e) => {
+  // 日本語入力（IME）の変換確定Enterでは送信しない
+  if(e.key === 'Enter' && !e.isComposing){
+    e.preventDefault();
+    handleSend();
+  }
+});
+
+/* ---------- sheet controls ---------- */
+function openSheet(){ document.getElementById('sheet').classList.add('open'); }
+function closeSheet(){
+  document.getElementById('sheet').classList.remove('open');
+  document.getElementById('spotActions').classList.add('hidden');
+  clearInterval(chatPollInterval);
+  unsubscribeChatRealtime(); // [Supabase対応] チャットのRealtime購読を解除
+  currentSpotId = null;
+  chatMessages = [];
+  if(tempMarker){ map.removeLayer(tempMarker); tempMarker = null; }
+}
+
+/* ---------- live location sharing ---------- */
+function toggleLiveSharing(){
+  if(!username){ document.getElementById('modalOverlay').classList.remove('hidden'); return; }
+  liveSharing = !liveSharing;
+  const btn = document.getElementById('liveBtn');
+  const label = document.getElementById('liveBtnLabel');
+  if(liveSharing){
+    btn.classList.add('on');
+    label.textContent = '共有中';
+    shareLocationOnce();
+    liveShareInterval = setInterval(shareLocationOnce, 15000); // 15秒ごとに更新
+  } else {
+    btn.classList.remove('on');
+    label.textContent = '位置共有';
+    clearInterval(liveShareInterval);
+    dbDeleteLiveLocation(username); // [変更] window.storage.delete → Supabaseから削除
+  }
+}
+
+/* [変更] window.storage.set('live:...') → Supabaseの live_locations を upsert */
+function shareLocationOnce(){
+  if(!navigator.geolocation){ return; }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      dbUpsertLiveLocation(username, pos.coords.latitude, pos.coords.longitude);
+    },
+    (err) => { console.error('位置情報取得エラー', err); },
+    { enableHighAccuracy:true, timeout:8000 }
+  );
+}
+
+/* [変更] window.storage.list('live:') → Supabaseから5分以内の位置情報のみ取得 */
+async function loadLivePositions(){
+  const rows = await dbFetchLiveLocations();
+  liveLayer.clearLayers();
+  rows.forEach(data => {
+    const who = data.user_name;
+    const icon = L.divIcon({
+      className:'', html:`<div class="live-marker" style="display:flex;flex-direction:column;align-items:center;gap:3px;"><div class="ring"></div><div class="live-label">${escapeHtml(who)}</div></div>`,
+      iconSize:[60,40], iconAnchor:[8,8]
+    });
+    L.marker([data.lat, data.lng], { icon }).addTo(liveLayer);
+  });
+}
+
+/* ---------- utils ---------- */
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+</script>
+</body>
+</html>
